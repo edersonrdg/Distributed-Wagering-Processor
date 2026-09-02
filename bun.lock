@@ -15,6 +15,7 @@
         "@nestjs/core": "^11.0.1",
         "@nestjs/platform-express": "^11.0.1",
         "@nestjs/terminus": "^12.0.0",
+        "big.js": "^7.0.1",
         "pg": "^8.23.0",
         "reflect-metadata": "^0.2.2",
         "rxjs": "^7.8.1",
@@ -29,6 +30,7 @@
         "@nestjs/testing": "^11.0.1",
         "@testcontainers/localstack": "^12.1.0",
         "@testcontainers/postgresql": "^12.1.0",
+        "@types/big.js": "^7.0.0",
         "@types/express": "^5.0.0",
         "@types/node": "^24.0.0",
         "@types/pg": "^8.23.1",
@@ -256,6 +258,8 @@
 
     "@tokenizer/token": ["@tokenizer/token@0.3.0", "", {}, "sha512-OvjF+z51L3ov0OyAU0duzsYuvO01PH7x4t6DJx+guahgTnBHkhJdG7soQeTSFLWN3efnHyibZ4Z8l2EuWwJN3A=="],
 
+    "@types/big.js": ["@types/big.js@7.0.0", "", {}, "sha512-WfAGp7IbJvyB8EmWK4tJD24rJRAL6uVbw3LV/hJntFNam+os9KWKj0PzXo8rRRpjupYK8U0M8FoBB8dBhWF2dg=="],
+
     "@types/body-parser": ["@types/body-parser@1.19.6", "", { "dependencies": { "@types/connect": "*", "@types/node": "*" } }, "sha512-HLFeCYgz89uk22N5Qg3dvGvsv46B8GLvKKo1zKG4NybA8U2DiEO3w9lqGg29t/tfLRJpJ6iQxnVw4OnB7MoM9g=="],
 
     "@types/connect": ["@types/connect@3.4.38", "", { "dependencies": { "@types/node": "*" } }, "sha512-K6uROf1LD88uDQqJCktA4yzL1YYAK6NgfsI0v/mTgyPKWsX1CnJ0XPSDhViejru1GcRkLWb8RlzFYJRqGUbaug=="],
@@ -419,6 +423,8 @@
     "baseline-browser-mapping": ["baseline-browser-mapping@2.11.20", "", { "bin": { "baseline-browser-mapping": "dist/cli.cjs" } }, "sha512-H0ulySigv6icDJ1F7SjtdCD6PrhTpdYCmP0CactWy1+ekh0AFd0o1Wn5T8b+hnTmdBx19u9yhL6wvCylXMY7zw=="],
 
     "bcrypt-pbkdf": ["bcrypt-pbkdf@1.0.2", "", { "dependencies": { "tweetnacl": "^0.14.3" } }, "sha512-qeFIXtP4MSoi6NLqO12WfqARWWuCKi2Rn/9hJLEmtB5yTNr9DqFWkJRCf2qShWzPeAMRnOgCrq0sg/KLv5ES9w=="],
+
+    "big.js": ["big.js@7.0.1", "", {}, "sha512-iFgV784tD8kq4ccF1xtNMZnXeZzVuXWWM+ERFzKQjv+A5G9HC8CY3DuV45vgzFFcW+u2tIvmF95+AzWgs6BjCg=="],
 
     "bl": ["bl@4.1.0", "", { "dependencies": { "buffer": "^5.5.0", "inherits": "^2.0.4", "readable-stream": "^3.4.0" } }, "sha512-1W07cM9gS6DcLperZfFSj+bWLtaPGSOHWhPiGzXmvVJbRLdG82sH/Kn8EtW1VqWVA54AKf2h5k5BbnIbwF3h6w=="],
 
