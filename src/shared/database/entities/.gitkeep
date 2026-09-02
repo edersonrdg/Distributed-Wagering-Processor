@@ -1,2 +1,0 @@
-This directory holds MikroORM entities (`*.entity.ts`), picked up automatically by
-`src/shared/database/mikro-orm.config.ts` via the `entitiesTs` glob.
