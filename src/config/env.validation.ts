@@ -18,6 +18,7 @@ export const envSchema = z.object({
   AWS_SECRET_ACCESS_KEY: z.string().default('test'),
   SQS_ENDPOINT: z.string().url(),
   SQS_WAGER_QUEUE_URL: z.string().min(1),
+  SQS_EVENTS_QUEUE_URL: z.string().min(1),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

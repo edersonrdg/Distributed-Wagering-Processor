@@ -50,6 +50,7 @@ export async function startInfra(): Promise<Infra> {
     AWS_SECRET_ACCESS_KEY: 'test',
     SQS_ENDPOINT: sqsEndpoint,
     SQS_WAGER_QUEUE_URL: queueUrl,
+    SQS_EVENTS_QUEUE_URL: queueUrl,
   });
 
   return { postgres, localstack, queueUrl };
