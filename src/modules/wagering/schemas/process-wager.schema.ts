@@ -8,7 +8,7 @@ export const processWagerSchema = z.object({
   walletId: z.string().uuid(),
   roundId: z.string().min(1),
   gameId: z.string().min(1),
-  kind: z.enum(WagerTransactionKind),
+  kind: z.nativeEnum(WagerTransactionKind),
   money: z.object({
     amount: z
       .string()
