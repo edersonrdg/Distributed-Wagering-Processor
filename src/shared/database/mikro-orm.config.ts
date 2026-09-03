@@ -17,7 +17,6 @@ export function buildMikroOrmConfig(env: DbEnv) {
     debug: env.DB_DEBUG,
     entities: ['./dist/**/*.entity.js'],
     entitiesTs: ['./src/**/*.entity.ts'],
-    discovery: { warnWhenNoEntities: false },
     extensions: [Migrator],
     migrations: {
       tableName: 'mikro_orm_migrations',

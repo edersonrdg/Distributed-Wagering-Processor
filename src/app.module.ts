@@ -6,6 +6,7 @@ import { validateEnv } from './config/env.validation';
 import { DatabaseModule } from './shared/database/database.module';
 import { SqsModule } from './shared/sqs/sqs.module';
 import { HealthModule } from './modules/health/health.module';
+import { WalletModule } from './modules/wallet/wallet.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { HealthModule } from './modules/health/health.module';
     DatabaseModule,
     SqsModule,
     HealthModule,
+    WalletModule,
   ],
   controllers: [AppController],
   providers: [AppService],
