@@ -19,6 +19,10 @@ import { Wallet } from '../../../core/domain/wallet.aggregate';
 import { WalletLedgerEntry } from '../../../core/domain/wallet-ledger-entry.entity';
 import { WagerTransactionEntity } from '../../../shared/database/entities/wager-transaction.entity';
 import { WalletLedgerEntryEntity } from '../../../shared/database/entities/wallet-ledger-entry.entity';
+import { WalletBalanceChanged } from '../../../shared/events/wallet-balance-changed.event';
+import { OutboxMessageEntity } from '../../../shared/database/entities/outbox-message.entity';
+import { OutboxMessage } from '../../../core/domain/outbox-message.entity';
+import { WagerTransactionProcessed } from '../../../shared/events/wager-transaction-processed.event';
 
 @Injectable()
 export class ProcessWageringService {
@@ -115,7 +119,18 @@ export class ProcessWageringService {
         updatedAt: walletEntity.updatedAt,
       });
 
-      const ledgerEntry = this.applyLedgerEntryRule(transaction, wallet);
+      const referenceDomain = wagerTransactionEntity
+        ? WagerTransaction.rehydrate({
+            ...wagerTransactionEntity,
+            money: Money.from(wagerTransactionEntity.money),
+          })
+        : undefined;
+
+      const ledgerEntry = this.applyLedgerEntryRule(
+        transaction,
+        wallet,
+        referenceDomain,
+      );
       transaction.markProcessed(wagerTransactionEntity?.id, new Date());
 
       this.logger.log(
@@ -158,7 +173,70 @@ export class ProcessWageringService {
 
         walletEntity.balance.amount = wallet.balance.toString();
         tsxEntityManager.persist(walletEntity);
+
+        const balanceChangeEvent = WalletBalanceChanged.create({
+          eventId: randomUUID(),
+          aggregateId: wallet.id,
+          correlationId: transaction.id,
+          data: {
+            walletId: wallet.id,
+            transactionId: transaction.id,
+            direction: ledgerEntry.direction,
+            money: ledgerEntry.money.toJSON(),
+            balanceBefore: ledgerEntry.balanceBefore.toJSON(),
+            balanceAfter: ledgerEntry.balanceAfter.toJSON(),
+            walletVersion: wallet.version,
+          },
+        });
+
+        const outboxBalance = OutboxMessage.enqueue(balanceChangeEvent);
+        const outboxMessageEntity = tsxEntityManager.create(
+          OutboxMessageEntity,
+          {
+            id: outboxBalance.id,
+            aggregateId: outboxBalance.aggregateId,
+            eventType: outboxBalance.eventType,
+            payload: outboxBalance.payload,
+            occurredAt: outboxBalance.occurredAt,
+            attempts: outboxBalance.attempts,
+            nextAttemptAt: outboxBalance.nextAttemptAt,
+            publishedAt: outboxBalance.publishedAt,
+          },
+        );
+
+        tsxEntityManager.persist(outboxMessageEntity);
       }
+
+      const processedWagerEvent = WagerTransactionProcessed.create({
+        eventId: randomUUID(),
+        aggregateId: transaction.id,
+        correlationId: transaction.id,
+        data: {
+          transactionId: transaction.id,
+          providerId: transaction.providerId,
+          walletId: transaction.walletId,
+          kind: transaction.kind,
+          status: transaction.status,
+          money: transaction.money.toJSON(),
+        },
+      });
+
+      const outboxWager = OutboxMessage.enqueue(processedWagerEvent);
+      const outboxMessageWagerEntity = tsxEntityManager.create(
+        OutboxMessageEntity,
+        {
+          id: outboxWager.id,
+          aggregateId: outboxWager.aggregateId,
+          eventType: outboxWager.eventType,
+          payload: outboxWager.payload,
+          occurredAt: outboxWager.occurredAt,
+          attempts: outboxWager.attempts,
+          nextAttemptAt: outboxWager.nextAttemptAt,
+          publishedAt: outboxWager.publishedAt,
+        },
+      );
+
+      tsxEntityManager.persist(outboxMessageWagerEntity);
 
       return {
         transactionId: transaction.id,
@@ -214,13 +292,15 @@ export class ProcessWageringService {
   private applyLedgerEntryRule(
     transaction: WagerTransaction,
     wallet: Wallet,
+    reference?: WagerTransaction,
   ): WalletLedgerEntry | null {
     if (!transaction.affectsBalance()) {
       return null;
     }
 
-    const direction =
-      transaction.kind === WagerTransactionKind.Bet
+    const direction = reference
+      ? transaction.ledgerDirectionFor(reference)
+      : transaction.kind === WagerTransactionKind.Bet
         ? LedgerDirection.Debit
         : LedgerDirection.Credit;
 
