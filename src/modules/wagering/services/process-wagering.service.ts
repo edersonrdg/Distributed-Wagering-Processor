@@ -23,6 +23,8 @@ import { WalletBalanceChanged } from '../../../shared/events/wallet-balance-chan
 import { OutboxMessageEntity } from '../../../shared/database/entities/outbox-message.entity';
 import { OutboxMessage } from '../../../core/domain/outbox-message.entity';
 import { WagerTransactionProcessed } from '../../../shared/events/wager-transaction-processed.event';
+import { InboxMessage } from '../../../core/domain/inbox-message.entity';
+import { InboxMessageEntity } from '../../../shared/database/entities/inbox-message.entity';
 
 @Injectable()
 export class ProcessWageringService {
@@ -30,13 +32,32 @@ export class ProcessWageringService {
 
   constructor(private readonly entityManager: EntityManager) {}
 
-  async execute(dto: ProcessWagerDto): Promise<ProcessWagerResult> {
+  async execute(
+    dto: ProcessWagerDto,
+    inbox?: InboxMessage,
+  ): Promise<ProcessWagerResult> {
     const idempotencyCheck = await this.checkIdempotency(dto);
     if (idempotencyCheck) {
       return idempotencyCheck;
     }
 
     return await this.entityManager.transactional(async (tsxEntityManager) => {
+      if (inbox) {
+        inbox.markProcessed(new Date());
+        const inboxEntity = tsxEntityManager.create(InboxMessageEntity, {
+          id: inbox.id,
+          messageId: inbox.messageId,
+          consumerName: inbox.consumerName,
+          payloadHash: inbox.payloadHash,
+          receivedAt: inbox.receivedAt,
+          processedAt: inbox.processedAt,
+        });
+        tsxEntityManager.persist(inboxEntity);
+        this.logger.log(
+          `Inbox message ${inbox.messageId} attached to transaction`,
+        );
+      }
+
       this.logger.log(`Processing transaction domain`);
       const transactionMoney = Money.from(dto.money);
       const transaction = WagerTransaction.create({
@@ -47,6 +68,7 @@ export class ProcessWageringService {
 
       this.logger.log(`Fetching transaction entity with ID: ${transaction.id}`);
       let wagerTransactionEntity: WagerTransactionEntity | null = null;
+      let referenceDomain: WagerTransaction | undefined = undefined;
 
       if (transaction.requiresReference()) {
         wagerTransactionEntity = await tsxEntityManager.findOne(
@@ -59,10 +81,10 @@ export class ProcessWageringService {
 
         if (!wagerTransactionEntity) {
           transaction.markPendingReference();
-
           this.logger.log(
             `Creating pending transaction entity for ID: ${transaction.id}`,
           );
+
           const pendingTxEntity = tsxEntityManager.create(
             WagerTransactionEntity,
             {
@@ -76,17 +98,17 @@ export class ProcessWageringService {
           );
 
           tsxEntityManager.persist(pendingTxEntity);
-
-          this.logger.log(
-            `Pending transaction entity created: ${JSON.stringify(transaction)}`,
-          );
-
           return {
             transactionId: transaction.id,
             status: transaction.status,
             idempotentReplay: false,
           };
         }
+
+        referenceDomain = WagerTransaction.rehydrate({
+          ...wagerTransactionEntity,
+          money: Money.from(wagerTransactionEntity.money),
+        });
       }
 
       this.logger.log(
@@ -94,12 +116,8 @@ export class ProcessWageringService {
       );
       const walletEntity = await tsxEntityManager.findOne(
         WalletEntity,
-        {
-          id: dto.walletId,
-        },
-        {
-          lockMode: LockMode.OPTIMISTIC,
-        },
+        { id: dto.walletId },
+        { lockMode: LockMode.OPTIMISTIC },
       );
 
       if (!walletEntity) {
@@ -119,13 +137,6 @@ export class ProcessWageringService {
         updatedAt: walletEntity.updatedAt,
       });
 
-      const referenceDomain = wagerTransactionEntity
-        ? WagerTransaction.rehydrate({
-            ...wagerTransactionEntity,
-            money: Money.from(wagerTransactionEntity.money),
-          })
-        : undefined;
-
       const ledgerEntry = this.applyLedgerEntryRule(
         transaction,
         wallet,
@@ -133,9 +144,6 @@ export class ProcessWageringService {
       );
       transaction.markProcessed(wagerTransactionEntity?.id, new Date());
 
-      this.logger.log(
-        `Marking transaction as processed: ${JSON.stringify(transaction)}`,
-      );
       const transactionEntity = tsxEntityManager.create(
         WagerTransactionEntity,
         {
@@ -147,7 +155,6 @@ export class ProcessWageringService {
           status: transaction.status,
         },
       );
-
       tsxEntityManager.persist(transactionEntity);
 
       if (ledgerEntry) {
@@ -188,7 +195,6 @@ export class ProcessWageringService {
             walletVersion: wallet.version,
           },
         });
-
         const outboxBalance = OutboxMessage.enqueue(balanceChangeEvent);
         const outboxMessageEntity = tsxEntityManager.create(
           OutboxMessageEntity,
@@ -203,7 +209,6 @@ export class ProcessWageringService {
             publishedAt: outboxBalance.publishedAt,
           },
         );
-
         tsxEntityManager.persist(outboxMessageEntity);
       }
 
@@ -220,7 +225,6 @@ export class ProcessWageringService {
           money: transaction.money.toJSON(),
         },
       });
-
       const outboxWager = OutboxMessage.enqueue(processedWagerEvent);
       const outboxMessageWagerEntity = tsxEntityManager.create(
         OutboxMessageEntity,
@@ -235,7 +239,6 @@ export class ProcessWageringService {
           publishedAt: outboxWager.publishedAt,
         },
       );
-
       tsxEntityManager.persist(outboxMessageWagerEntity);
 
       return {
@@ -253,13 +256,6 @@ export class ProcessWageringService {
     if (!dto.idempotencyKey) {
       throw new BadRequestException('Header idempotency-key is required');
     }
-
-    this.logger.log(
-      `Fetch existing transaction with idempotency, ${JSON.stringify({
-        providerId: dto.providerId,
-        idempotencyKey: dto.idempotencyKey,
-      })}`,
-    );
     const existingTxEntity = await this.entityManager.findOne(
       WagerTransactionEntity,
       {
@@ -268,24 +264,18 @@ export class ProcessWageringService {
       },
     );
 
-    this.logger.log(
-      `Existing transaction entity: ${JSON.stringify(existingTxEntity)}`,
-    );
-
     if (existingTxEntity) {
       if (existingTxEntity.payloadHash !== dto.payloadHash) {
         throw new ConflictException(
           'Idempotency conflict: payload hash mismatch',
         );
       }
-
       return {
         transactionId: existingTxEntity.id,
         status: existingTxEntity.status,
         idempotentReplay: true,
       };
     }
-
     return undefined;
   }
 

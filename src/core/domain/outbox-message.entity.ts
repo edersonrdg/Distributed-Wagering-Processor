@@ -59,7 +59,7 @@ export class OutboxMessage {
   }
 
   isPending(): boolean {
-    return this._publishedAt === undefined;
+    return this._publishedAt == null;
   }
 
   isDue(now: Date): boolean {
