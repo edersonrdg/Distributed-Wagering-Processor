@@ -7,6 +7,7 @@ import { DatabaseModule } from './shared/database/database.module';
 import { SqsModule } from './shared/sqs/sqs.module';
 import { HealthModule } from './modules/health/health.module';
 import { WalletModule } from './modules/wallet/wallet.module';
+import { WageringModule } from './modules/wagering/wagering.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { WalletModule } from './modules/wallet/wallet.module';
     SqsModule,
     HealthModule,
     WalletModule,
+    WageringModule,
   ],
   controllers: [AppController],
   providers: [AppService],
