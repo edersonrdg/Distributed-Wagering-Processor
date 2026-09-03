@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -26,8 +27,9 @@ export class ProcessWageringService {
   constructor(private readonly entityManager: EntityManager) {}
 
   async execute(dto: ProcessWagerDto): Promise<ProcessWagerResult> {
-    if (!dto.idempotencyKey) {
-      throw new BadRequestException('Header idempotency-key is required');
+    const idempotencyCheck = await this.checkIdempotency(dto);
+    if (idempotencyCheck) {
+      return idempotencyCheck;
     }
 
     return await this.entityManager.transactional(async (tsxEntityManager) => {
@@ -165,6 +167,48 @@ export class ProcessWageringService {
         idempotentReplay: false,
       };
     });
+  }
+
+  private async checkIdempotency(
+    dto: ProcessWagerDto,
+  ): Promise<ProcessWagerResult | undefined> {
+    if (!dto.idempotencyKey) {
+      throw new BadRequestException('Header idempotency-key is required');
+    }
+
+    this.logger.log(
+      `Fetch existing transaction with idempotency, ${JSON.stringify({
+        providerId: dto.providerId,
+        idempotencyKey: dto.idempotencyKey,
+      })}`,
+    );
+    const existingTxEntity = await this.entityManager.findOne(
+      WagerTransactionEntity,
+      {
+        providerId: dto.providerId,
+        idempotencyKey: dto.idempotencyKey,
+      },
+    );
+
+    this.logger.log(
+      `Existing transaction entity: ${JSON.stringify(existingTxEntity)}`,
+    );
+
+    if (existingTxEntity) {
+      if (existingTxEntity.payloadHash !== dto.payloadHash) {
+        throw new ConflictException(
+          'Idempotency conflict: payload hash mismatch',
+        );
+      }
+
+      return {
+        transactionId: existingTxEntity.id,
+        status: existingTxEntity.status,
+        idempotentReplay: true,
+      };
+    }
+
+    return undefined;
   }
 
   private applyLedgerEntryRule(

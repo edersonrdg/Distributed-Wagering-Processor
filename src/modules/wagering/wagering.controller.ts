@@ -15,6 +15,7 @@ import {
 } from './schemas/process-wager.schema';
 import { ProcessWageringService } from './services/process-wagering.service';
 import { SearchWageringService } from './services/search-wagering.service';
+import { generateHashPayload } from './utils/payload-hash.utils';
 
 @Controller()
 export class WageringController {
@@ -31,7 +32,7 @@ export class WageringController {
   ) {
     return this.processWagerService.execute({
       idempotencyKey,
-      payloadHash: '12312312312',
+      payloadHash: generateHashPayload(body),
       ...body,
     });
   }
