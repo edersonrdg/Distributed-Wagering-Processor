@@ -4,24 +4,24 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { ProcessWagerDto, ProcessWagerResult } from './dto/process-wager.dto';
-import { Money } from '../../core/domain/money.value-object';
+import { ProcessWagerDto, ProcessWagerResult } from '../dto/process-wager.dto';
+import { Money } from '../../../core/domain/money.value-object';
 import {
   LedgerDirection,
   WagerTransaction,
   WagerTransactionKind,
-} from '../../core/domain/wager-transaction.entity';
+} from '../../../core/domain/wager-transaction.entity';
 import { randomUUID } from 'node:crypto';
 import { EntityManager, LockMode } from '@mikro-orm/core';
-import { WalletEntity } from '../../shared/database/entities/wallet.entity';
-import { Wallet } from '../../core/domain/wallet.aggregate';
-import { WalletLedgerEntry } from '../../core/domain/wallet-ledger-entry.entity';
-import { WagerTransactionEntity } from '../../shared/database/entities/wager-transaction.entity';
-import { WalletLedgerEntryEntity } from '../../shared/database/entities/wallet-ledger-entry.entity';
+import { WalletEntity } from '../../../shared/database/entities/wallet.entity';
+import { Wallet } from '../../../core/domain/wallet.aggregate';
+import { WalletLedgerEntry } from '../../../core/domain/wallet-ledger-entry.entity';
+import { WagerTransactionEntity } from '../../../shared/database/entities/wager-transaction.entity';
+import { WalletLedgerEntryEntity } from '../../../shared/database/entities/wallet-ledger-entry.entity';
 
 @Injectable()
-export class WageringService {
-  private logger = new Logger(WageringService.name);
+export class ProcessWageringService {
+  private logger = new Logger(ProcessWageringService.name);
 
   constructor(private readonly entityManager: EntityManager) {}
 

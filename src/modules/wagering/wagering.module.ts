@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
-import { WageringService } from './wagering.service';
+import { ProcessWageringService } from './services/process-wagering.service';
 import { WageringController } from './wagering.controller';
+import { SearchWageringService } from './services/search-wagering.service';
 
 @Module({
   controllers: [WageringController],
-  providers: [WageringService],
+  providers: [ProcessWageringService, SearchWageringService],
 })
 export class WageringModule {}

@@ -1,9 +1,11 @@
 import {
   Body,
   Controller,
+  Get,
   Headers,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
 } from '@nestjs/common';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -11,13 +13,17 @@ import {
   type ProcessWagerPayload,
   processWagerSchema,
 } from './schemas/process-wager.schema';
-import { WageringService } from './wagering.service';
+import { ProcessWageringService } from './services/process-wagering.service';
+import { SearchWageringService } from './services/search-wagering.service';
 
-@Controller('wagering/transactions')
+@Controller()
 export class WageringController {
-  constructor(private readonly processWagerService: WageringService) {}
+  constructor(
+    private readonly processWagerService: ProcessWageringService,
+    private readonly searchWageringService: SearchWageringService,
+  ) {}
 
-  @Post()
+  @Post('wagering/transactions')
   @HttpCode(HttpStatus.OK)
   async processWager(
     @Headers('idempotency-key') idempotencyKey: string,
@@ -28,5 +34,21 @@ export class WageringController {
       payloadHash: '12312312312',
       ...body,
     });
+  }
+
+  @Get('wagering/transactions/:transactionId')
+  async getTransaction(@Param('transactionId') transactionId: string) {
+    return await this.searchWageringService.getTransactionById(transactionId);
+  }
+
+  @Get('providers/:providerId/wagering/transactions/:externalTransactionId')
+  async getTransactionByExternal(
+    @Param('providerId') providerId: string,
+    @Param('externalTransactionId') externalTransactionId: string,
+  ) {
+    return await this.searchWageringService.getTransactionByExternalId(
+      providerId,
+      externalTransactionId,
+    );
   }
 }
