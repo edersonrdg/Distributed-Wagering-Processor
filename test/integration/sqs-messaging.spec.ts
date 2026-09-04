@@ -68,7 +68,6 @@ describe('SQS messaging (real LocalStack)', () => {
     const producer = new SqsProducerService(client);
 
     const ids = Array.from({ length: 20 }, (_, i) => `msg-${i}`);
-    // All sends fire concurrently to provoke a real race at the broker/network layer.
     await Promise.all(ids.map((id) => producer.send(queueUrl, { id })));
 
     const consumer = new TestConsumer(client, queueUrl);

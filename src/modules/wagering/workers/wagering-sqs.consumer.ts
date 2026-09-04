@@ -6,15 +6,18 @@ import { ProcessWageringService } from '../services/process-wagering.service';
 import { InboxMessage } from '../../../core/domain/inbox-message.entity';
 import { ProcessWagerDto } from '../dto/process-wager.dto';
 import type { EnvConfig } from '../../../config/env.validation';
+import { MetricsService } from '../../observability/metrics.service';
 
 @Injectable()
 export class WageringSqsConsumer extends SqsConsumerService {
   protected readonly queueUrl: string;
+  protected readonly MAX_RECEIVE_COUNT = 5;
 
   constructor(
     client: SQSClient,
     config: ConfigService<EnvConfig, true>,
     private readonly processWageringService: ProcessWageringService,
+    private readonly metrics: MetricsService,
   ) {
     super(client);
     this.queueUrl = config.get('SQS_WAGER_QUEUE_URL', { infer: true });
@@ -29,7 +32,6 @@ export class WageringSqsConsumer extends SqsConsumerService {
     const payload = JSON.parse(message.Body);
     const data: ProcessWagerDto = payload.data;
 
-    // Constrói o objeto de domínio do Inbox persistente
     const inbox = InboxMessage.receive({
       messageId: message.MessageId,
       consumerName: 'wagering-processor',
@@ -38,18 +40,32 @@ export class WageringSqsConsumer extends SqsConsumerService {
 
     try {
       await this.processWageringService.execute(data, inbox);
-
       this.logger.log(`Message ${message.MessageId} processed successfully`);
     } catch (error) {
       if (
         error instanceof Error &&
         error.message.includes('already processed')
       ) {
+        this.metrics.recordDuplicate();
         this.logger.warn(
           `Message ${message.MessageId} is a duplicate (Inbox hit). Acking.`,
         );
         return;
       }
+
+      const receiveCount = Number(
+        message.Attributes?.ApproximateReceiveCount || 1,
+      );
+
+      if (receiveCount >= this.MAX_RECEIVE_COUNT) {
+        this.metrics.recordDlq();
+        this.logger.error(
+          `Message ${message.MessageId} moving to DLQ after ${receiveCount} attempts.`,
+        );
+      } else {
+        this.metrics.recordRetry();
+      }
+
       throw error;
     }
   }

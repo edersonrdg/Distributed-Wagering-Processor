@@ -31,27 +31,32 @@ export class SearchWalletService {
     const query: Record<string, any> = { walletId };
 
     if (cursor) {
-      const decodedCursor = new Date(
-        Buffer.from(cursor, 'base64').toString('ascii'),
-      );
-      query.createdAt = { $lt: decodedCursor };
+      const decodedCursor = Buffer.from(cursor, 'base64').toString('utf-8');
+      const [timestamp, id] = decodedCursor.split('|');
+
+      if (timestamp && id) {
+        query.$or = [
+          { createdAt: { $lt: new Date(timestamp) } },
+          { createdAt: new Date(timestamp), id: { $lt: id } },
+        ];
+      }
     }
 
     const entries = await this.entityManager.find(
       WalletLedgerEntryEntity,
       query,
       {
-        orderBy: { createdAt: 'DESC' },
+        orderBy: { createdAt: 'DESC', id: 'DESC' },
         limit: parsedLimit,
       },
     );
 
-    const nextCursor =
-      entries.length === parsedLimit
-        ? Buffer.from(
-            entries[entries.length - 1].createdAt.toISOString(),
-          ).toString('base64')
-        : null;
+    let nextCursor: string | null = null;
+    if (entries.length === parsedLimit) {
+      const lastEntry = entries[entries.length - 1];
+      const cursorData = `${lastEntry.createdAt.toISOString()}|${lastEntry.id}`;
+      nextCursor = Buffer.from(cursorData).toString('base64');
+    }
 
     return {
       data: entries.map((entry) => ({
