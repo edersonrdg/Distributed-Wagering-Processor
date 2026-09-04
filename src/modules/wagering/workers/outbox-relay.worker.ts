@@ -5,6 +5,7 @@ import { OutboxMessageEntity } from '../../../shared/database/entities/outbox-me
 import { OutboxMessage } from '../../../core/domain/outbox-message.entity';
 import { SqsProducerService } from '../../../shared/sqs/sqs-producer.service';
 import { ConfigService } from '@nestjs/config';
+import { MetricsService } from '../../observability/metrics.service';
 
 @Injectable()
 export class OutboxRelayWorker {
@@ -15,6 +16,7 @@ export class OutboxRelayWorker {
     private readonly em: EntityManager,
     private readonly sqsProducer: SqsProducerService,
     config: ConfigService,
+    private readonly metrics: MetricsService,
   ) {
     this.topicUrl = config.get<string>('SQS_EVENTS_QUEUE_URL') || '';
   }
@@ -22,6 +24,13 @@ export class OutboxRelayWorker {
   @Cron(CronExpression.EVERY_5_SECONDS)
   async relayMessages() {
     const em = this.em.fork();
+
+    const totalPending = await em.count(OutboxMessageEntity, {
+      publishedAt: null,
+    });
+    this.metrics.setOutboxLag(totalPending);
+
+    if (totalPending === 0) return;
 
     const pendingMessages = await em.find(
       OutboxMessageEntity,

@@ -31,8 +31,22 @@ export abstract class SqsConsumerService
   }
 
   async onModuleDestroy(): Promise<void> {
+    this.logger.log({
+      message: `Recebido sinal SIGTERM/SIGINT. Iniciando graceful shutdown para a fila ${this.queueUrl}...`,
+      context: this.constructor.name,
+    });
+
     this.polling = false;
-    await this.loop;
+
+    if (this.loop) {
+      await this.loop;
+    }
+
+    this.logger.log({
+      message:
+        'Consumidor SQS encerrado com segurança. Nenhuma transação pendente foi interrompida de forma abrupta.',
+      context: this.constructor.name,
+    });
   }
 
   protected abstract handleMessage(message: Message): Promise<void>;
