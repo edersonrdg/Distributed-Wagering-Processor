@@ -23,9 +23,9 @@ Este repositório contém a solução do desafio técnico para o processador de 
 
 1. Instale as dependências:
 
-   ```bash
-   bun install
-   ```
+```bash
+bun install
+```
 
 2. Configure o ambiente:
 
