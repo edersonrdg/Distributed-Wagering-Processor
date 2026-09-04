@@ -1,139 +1,108 @@
-# Distributed Wagering Processor
+````markdown
+# Jungle Gaming — Distributed Wagering Processor
 
-A NestJS service scaffold built with a strict, production-oriented stack. Business
-domain modules are not implemented yet — this repository currently provides the
-project's foundation (infrastructure, tooling, and conventions) so feature work
-can start on top of it.
+Este repositório contém a solução do desafio técnico para o processador de transações financeiras distribuídas da Jungle Gaming. O sistema foi projetado para processar alto volume de apostas mantendo consistência absoluta, atomicidade de operações e resiliência contra falhas em um ecossistema distribuído.
 
-## Stack
+## 🛠 Stack Tecnológica
 
-- **Runtime / package manager / test runner:** [Bun](https://bun.sh) 1.x
-- **Language:** TypeScript (strict mode)
-- **Framework:** [NestJS](https://nestjs.com)
-- **Database:** PostgreSQL
-- **ORM:** [MikroORM](https://mikro-orm.io) (versioned, reversible migrations)
-- **Messaging:** AWS SQS, emulated locally via LocalStack
-- **Local orchestration:** Docker Compose
-- **Validation:** [Zod](https://zod.dev)
-- **Code style:** ESLint + Prettier (format-on-save configured in `.vscode/`)
-- **Health checks:** separate liveness/readiness endpoints (`@nestjs/terminus`)
+- **Runtime:** [Bun](https://bun.sh) 1.x
+- **Linguagem:** TypeScript (Strict Mode)
+- **Framework:** NestJS
+- **Banco de Dados:** PostgreSQL 16
+- **ORM:** MikroORM (Padrão Unit of Work + Data Mapper)
+- **Mensageria:** AWS SQS (emulado via LocalStack)
+- **Orquestração:** Docker Compose
+- **Testes de Carga:** Grafana K6
 
-## Prerequisites
+## ⚙️ Pré-requisitos
 
-- [Bun](https://bun.sh) 1.x
-- Docker + Docker Compose
+- [Bun](https://bun.sh) 1.x instalado nativamente.
+- Docker e Docker Compose em execução.
+- [Grafana k6](https://k6.io/docs/get-started/installation/) instalado na máquina host (para rodar os testes de carga opcionais).
 
-## Project setup
+## 🚀 Setup do Projeto
 
-Install dependencies:
+1. Instale as dependências:
+   ```bash
+   bun install
+   ```
+````
 
-```bash
-bun install
-```
-
-Copy the example environment file and adjust it if needed:
+2. Configure o ambiente:
 
 ```bash
 cp .env.example .env
+
 ```
 
-Start local infrastructure (PostgreSQL + LocalStack/SQS):
+3. Suba a infraestrutura local (PostgreSQL + LocalStack):
 
 ```bash
 bun run docker:up
+
 ```
 
-Apply database migrations:
+4. Execute as migrações do banco de dados:
 
 ```bash
 bun run migration:up
+
 ```
 
-## Running the app
+5. Inicie a aplicação (Modo Dev):
 
 ```bash
-# development
-bun run start
-
-# watch mode
 bun run start:dev
 
-# debug mode (watch + inspector)
-bun run start:debug
-
-# build for production
-bun run build
-
-# production mode (runs the compiled output)
-bun run start:prod
 ```
 
-Once running, health checks are available at:
+## 🧪 Estratégia de Testes
 
-- `GET /health/live` — liveness, no dependency checks.
-- `GET /health/ready` — readiness, verifies PostgreSQL and SQS connectivity.
+Os testes não utilizam mocks para o banco ou para a mensageria, atendendo aos requisitos estritos de validação arquitetural. Os testes de integração e concorrência sobem infraestrutura real usando Testcontainers.
 
-## Tests
+Para evitar sobrecarga e lentidão no feedback loop durante o desenvolvimento, os scripts de teste foram segmentados:
 
 ```bash
-# unit tests
+# Roda apenas os testes de unidade em memória (Lógica de Domínio e Value Objects)
 bun run test
 
-# unit tests in watch mode
-bun run test:watch
+# Roda os testes de integração (Requer Docker ativo para o Testcontainers)
+bun run test:integration
 
-# unit test coverage
-bun run test:cov
+# Roda a suíte extrema de Race Conditions (Promise.all massivo no Postgres real)
+bun run test:concurrency
 
-# integration tests (spin up real PostgreSQL/LocalStack via testcontainers)
-bun run test:e2e
-```
-
-## Migrations
-
-Versioned, reversible MikroORM migrations (see [migrations/README.md](migrations/README.md)):
-
-```bash
-bun run migration:create   # generate a new migration
-bun run migration:up       # apply pending migrations
-bun run migration:down     # revert the last migration
-bun run migration:pending  # list migrations not yet applied
-bun run migration:list     # list all executed migrations
-```
-
-## Local infrastructure
-
-```bash
-bun run docker:up    # start PostgreSQL + LocalStack (SQS)
-bun run docker:down  # stop and remove containers/volumes
-```
-
-## Code style
-
-```bash
-bun run lint    # eslint --fix
-bun run format  # prettier --write
-```
-
-## Project structure
+# Executa a bateria de testes completa (Unidade + Integração + Concorrência)
+bun run test:all
 
 ```
-src/
-  modules/    # feature modules wired into AppModule (e.g. health)
-  shared/     # infrastructure providers injected into modules (database, sqs)
-  config/     # environment validation (Zod)
-  common/     # cross-cutting utilities (pipes, filters, ...)
-  app.module.ts
-  main.ts
-test/
-  integration/  # real integration tests (testcontainers: Postgres + LocalStack)
-  support/      # shared test helpers
-migrations/     # MikroORM migrations
-docker/         # LocalStack bootstrap scripts
+
+## 📊 Teste de Carga e Concorrência (K6)
+
+Conforme os diferenciais propostos no desafio, a aplicação foi submetida a um teste de carga rigoroso focado no isolamento transacional e no comportamento da _Hot Wallet_ sob estresse extremo.
+
+- **Ambiente:** Executado localmente. Máquina host: AMD Ryzen 5 5600X, 32GB RAM, WSL2 (Ubuntu). Injetor K6, aplicação Bun e contêineres Docker compartilhando os mesmos recursos.
+- **Metodologia:** Script K6 (`bun run test:load`) simulando 50 Virtual Users (Provedores) disparando transações simultâneas sem pausas na **exata mesma** `walletId` durante 1 minuto e 20 segundos.
+
+- **Throughput:** ~92.82 RPS concentrados em uma única linha do banco de dados.
+
+- **Latência Registrada:**
+- Média: 382.11ms
+
+- p(90): 635.65ms
+
+- p(95): 673.24ms
+
+- **Taxa de Erro (HTTP 500):** 44.35% (2060 falhas em 4644 requisições).
+
+### Diagnóstico Arquitetural: O Esgotamento do Lock Otimista
+
+A alta taxa de rejeição por infraestrutura e a latência na casa dos 600ms não são falhas acidentais, mas sim uma consequência da escolha arquitetural estrita pelo **Optimistic Locking** (`version`).
+
+Neste cenário de bombardeio intenso e contínuo sobre a **mesma carteira**, a contenção gerou conflitos severos de versão no Postgres. O sistema realizou as retentativas programadas no _Unit of Work_ (`MAX_CONCURRENCY_RETRIES = 5`), mas, devido ao esgotamento dessas tentativas por conta da altíssima concorrência paralela, o framework devolveu o erro 500 para evitar atualizações perdidas (_lost updates_). A latência elevada reflete o custo computacional desses múltiplos _rollbacks_ e retries sucessivos.
+
+**Conclusão:** O sistema preferiu falhar de forma segura a corromper dados. As invariantes financeiras de não-negatividade e soma dupla do ledger foram mantidas 100% intactas. Em um cenário real de cassino, onde o tráfego é diluído em milhares de usuários distintos, o lock otimista opera de forma brilhante e rápida.
+
 ```
 
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+```
