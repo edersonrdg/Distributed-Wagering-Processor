@@ -11,6 +11,7 @@ import {
   LedgerDirection,
   WagerTransaction,
   WagerTransactionKind,
+  WagerTransactionStatus,
 } from '../../../core/domain/wager-transaction.entity';
 import { randomUUID } from 'node:crypto';
 import { EntityManager, LockMode } from '@mikro-orm/core';
@@ -23,8 +24,11 @@ import { WalletBalanceChanged } from '../../../shared/events/wallet-balance-chan
 import { OutboxMessageEntity } from '../../../shared/database/entities/outbox-message.entity';
 import { OutboxMessage } from '../../../core/domain/outbox-message.entity';
 import { WagerTransactionProcessed } from '../../../shared/events/wager-transaction-processed.event';
+import { WagerTransactionRejected } from '../../../shared/events/wager-transaction-rejected.event';
 import { InboxMessage } from '../../../core/domain/inbox-message.entity';
 import { InboxMessageEntity } from '../../../shared/database/entities/inbox-message.entity';
+import { FailureCode } from '../../../core/domain/failure-codes.enum';
+import { WagerTransactionPendingReference } from '../../../shared/events/wager-transaction-pending.event';
 
 @Injectable()
 export class ProcessWageringService {
@@ -53,12 +57,8 @@ export class ProcessWageringService {
           processedAt: inbox.processedAt,
         });
         tsxEntityManager.persist(inboxEntity);
-        this.logger.log(
-          `Inbox message ${inbox.messageId} attached to transaction`,
-        );
       }
 
-      this.logger.log(`Processing transaction domain`);
       const transactionMoney = Money.from(dto.money);
       const transaction = WagerTransaction.create({
         ...dto,
@@ -66,7 +66,6 @@ export class ProcessWageringService {
         money: transactionMoney,
       });
 
-      this.logger.log(`Fetching transaction entity with ID: ${transaction.id}`);
       let wagerTransactionEntity: WagerTransactionEntity | null = null;
       let referenceDomain: WagerTransaction | undefined = undefined;
 
@@ -81,9 +80,6 @@ export class ProcessWageringService {
 
         if (!wagerTransactionEntity) {
           transaction.markPendingReference();
-          this.logger.log(
-            `Creating pending transaction entity for ID: ${transaction.id}`,
-          );
 
           const pendingTxEntity = tsxEntityManager.create(
             WagerTransactionEntity,
@@ -96,8 +92,34 @@ export class ProcessWageringService {
               status: transaction.status,
             },
           );
-
           tsxEntityManager.persist(pendingTxEntity);
+
+          const pendingEvent = WagerTransactionPendingReference.create({
+            eventId: randomUUID(),
+            aggregateId: transaction.id,
+            correlationId: transaction.id,
+            data: {
+              transactionId: transaction.id,
+              providerId: transaction.providerId,
+              referenceExternalTransactionId:
+                dto.referenceExternalTransactionId!,
+            },
+          });
+
+          const outboxPending = OutboxMessage.enqueue(pendingEvent);
+          tsxEntityManager.persist(
+            tsxEntityManager.create(OutboxMessageEntity, {
+              id: outboxPending.id,
+              aggregateId: outboxPending.aggregateId,
+              eventType: outboxPending.eventType,
+              payload: outboxPending.payload,
+              occurredAt: outboxPending.occurredAt,
+              attempts: outboxPending.attempts,
+              nextAttemptAt: outboxPending.nextAttemptAt,
+              publishedAt: outboxPending.publishedAt,
+            }),
+          );
+
           return {
             transactionId: transaction.id,
             status: transaction.status,
@@ -111,9 +133,6 @@ export class ProcessWageringService {
         });
       }
 
-      this.logger.log(
-        `Fetching wallet with ID: ${dto.walletId} (Optimistic Locking)`,
-      );
       const walletEntity = await tsxEntityManager.findOne(
         WalletEntity,
         { id: dto.walletId },
@@ -137,12 +156,34 @@ export class ProcessWageringService {
         updatedAt: walletEntity.updatedAt,
       });
 
-      const ledgerEntry = this.applyLedgerEntryRule(
-        transaction,
-        wallet,
-        referenceDomain,
-      );
-      transaction.markProcessed(wagerTransactionEntity?.id, new Date());
+      let ledgerEntry: WalletLedgerEntry | null = null;
+      let businessFailureCode: FailureCode | null = null;
+
+      try {
+        ledgerEntry = this.applyLedgerEntryRule(
+          transaction,
+          wallet,
+          referenceDomain,
+        );
+        transaction.markProcessed(wagerTransactionEntity?.id, new Date());
+      } catch (error) {
+        if (error instanceof Error) {
+          if (error.message.includes('Insufficient funds')) {
+            businessFailureCode = FailureCode.INSUFFICIENT_FUNDS;
+          } else if (error.message.includes('Currency mismatch')) {
+            businessFailureCode = FailureCode.CURRENCY_MISMATCH;
+          } else {
+            businessFailureCode = FailureCode.BUSINESS_RULE_VIOLATION;
+          }
+        } else {
+          businessFailureCode = FailureCode.UNKNOWN_ERROR;
+        }
+
+        transaction.reject(businessFailureCode);
+        this.logger.warn(
+          `Transaction ${transaction.id} rejected: ${businessFailureCode}`,
+        );
+      }
 
       const transactionEntity = tsxEntityManager.create(
         WagerTransactionEntity,
@@ -153,93 +194,122 @@ export class ProcessWageringService {
             currency: transaction.money.currency,
           },
           status: transaction.status,
+          failureCode: transaction.failureCode,
         },
       );
       tsxEntityManager.persist(transactionEntity);
 
-      if (ledgerEntry) {
-        const ledgerEntryEntity = tsxEntityManager.create(
-          WalletLedgerEntryEntity,
-          {
-            ...ledgerEntry,
-            money: {
-              amount: ledgerEntry.money.toString(),
-              currency: ledgerEntry.money.currency,
+      if (transaction.status === WagerTransactionStatus.Processed) {
+        if (ledgerEntry) {
+          const ledgerEntryEntity = tsxEntityManager.create(
+            WalletLedgerEntryEntity,
+            {
+              ...ledgerEntry,
+              money: {
+                amount: ledgerEntry.money.toString(),
+                currency: ledgerEntry.money.currency,
+              },
+              balanceBefore: {
+                amount: ledgerEntry.balanceBefore.toString(),
+                currency: ledgerEntry.balanceBefore.currency,
+              },
+              balanceAfter: {
+                amount: ledgerEntry.balanceAfter.toString(),
+                currency: ledgerEntry.balanceAfter.currency,
+              },
             },
-            balanceBefore: {
-              amount: ledgerEntry.balanceBefore.toString(),
-              currency: ledgerEntry.balanceBefore.currency,
-            },
-            balanceAfter: {
-              amount: ledgerEntry.balanceAfter.toString(),
-              currency: ledgerEntry.balanceAfter.currency,
-            },
-          },
-        );
-        tsxEntityManager.persist(ledgerEntryEntity);
+          );
+          tsxEntityManager.persist(ledgerEntryEntity);
 
-        walletEntity.balance.amount = wallet.balance.toString();
-        tsxEntityManager.persist(walletEntity);
+          walletEntity.balance.amount = wallet.balance.toString();
+          tsxEntityManager.persist(walletEntity);
 
-        const balanceChangeEvent = WalletBalanceChanged.create({
+          const balanceChangeEvent = WalletBalanceChanged.create({
+            eventId: randomUUID(),
+            aggregateId: wallet.id,
+            correlationId: transaction.id,
+            data: {
+              walletId: wallet.id,
+              transactionId: transaction.id,
+              direction: ledgerEntry.direction,
+              money: ledgerEntry.money.toJSON(),
+              balanceBefore: ledgerEntry.balanceBefore.toJSON(),
+              balanceAfter: ledgerEntry.balanceAfter.toJSON(),
+              walletVersion: wallet.version,
+            },
+          });
+
+          const outboxBalance = OutboxMessage.enqueue(balanceChangeEvent);
+          tsxEntityManager.persist(
+            tsxEntityManager.create(OutboxMessageEntity, {
+              id: outboxBalance.id,
+              aggregateId: outboxBalance.aggregateId,
+              eventType: outboxBalance.eventType,
+              payload: outboxBalance.payload,
+              occurredAt: outboxBalance.occurredAt,
+              attempts: outboxBalance.attempts,
+              nextAttemptAt: outboxBalance.nextAttemptAt,
+              publishedAt: outboxBalance.publishedAt,
+            }),
+          );
+        }
+
+        const processedWagerEvent = WagerTransactionProcessed.create({
           eventId: randomUUID(),
-          aggregateId: wallet.id,
+          aggregateId: transaction.id,
           correlationId: transaction.id,
           data: {
-            walletId: wallet.id,
             transactionId: transaction.id,
-            direction: ledgerEntry.direction,
-            money: ledgerEntry.money.toJSON(),
-            balanceBefore: ledgerEntry.balanceBefore.toJSON(),
-            balanceAfter: ledgerEntry.balanceAfter.toJSON(),
-            walletVersion: wallet.version,
+            providerId: transaction.providerId,
+            walletId: transaction.walletId,
+            kind: transaction.kind,
+            status: transaction.status,
+            money: transaction.money.toJSON(),
           },
         });
-        const outboxBalance = OutboxMessage.enqueue(balanceChangeEvent);
-        const outboxMessageEntity = tsxEntityManager.create(
-          OutboxMessageEntity,
-          {
-            id: outboxBalance.id,
-            aggregateId: outboxBalance.aggregateId,
-            eventType: outboxBalance.eventType,
-            payload: outboxBalance.payload,
-            occurredAt: outboxBalance.occurredAt,
-            attempts: outboxBalance.attempts,
-            nextAttemptAt: outboxBalance.nextAttemptAt,
-            publishedAt: outboxBalance.publishedAt,
-          },
-        );
-        tsxEntityManager.persist(outboxMessageEntity);
-      }
 
-      const processedWagerEvent = WagerTransactionProcessed.create({
-        eventId: randomUUID(),
-        aggregateId: transaction.id,
-        correlationId: transaction.id,
-        data: {
-          transactionId: transaction.id,
-          providerId: transaction.providerId,
-          walletId: transaction.walletId,
-          kind: transaction.kind,
-          status: transaction.status,
-          money: transaction.money.toJSON(),
-        },
-      });
-      const outboxWager = OutboxMessage.enqueue(processedWagerEvent);
-      const outboxMessageWagerEntity = tsxEntityManager.create(
-        OutboxMessageEntity,
-        {
-          id: outboxWager.id,
-          aggregateId: outboxWager.aggregateId,
-          eventType: outboxWager.eventType,
-          payload: outboxWager.payload,
-          occurredAt: outboxWager.occurredAt,
-          attempts: outboxWager.attempts,
-          nextAttemptAt: outboxWager.nextAttemptAt,
-          publishedAt: outboxWager.publishedAt,
-        },
-      );
-      tsxEntityManager.persist(outboxMessageWagerEntity);
+        const outboxWager = OutboxMessage.enqueue(processedWagerEvent);
+        tsxEntityManager.persist(
+          tsxEntityManager.create(OutboxMessageEntity, {
+            id: outboxWager.id,
+            aggregateId: outboxWager.aggregateId,
+            eventType: outboxWager.eventType,
+            payload: outboxWager.payload,
+            occurredAt: outboxWager.occurredAt,
+            attempts: outboxWager.attempts,
+            nextAttemptAt: outboxWager.nextAttemptAt,
+            publishedAt: outboxWager.publishedAt,
+          }),
+        );
+      } else if (transaction.status === WagerTransactionStatus.Rejected) {
+        const rejectedEvent = WagerTransactionRejected.create({
+          eventId: randomUUID(),
+          aggregateId: transaction.id,
+          correlationId: transaction.id,
+          data: {
+            transactionId: transaction.id,
+            providerId: transaction.providerId,
+            walletId: transaction.walletId,
+            kind: transaction.kind,
+            failureCode: transaction.failureCode!,
+            money: transaction.money.toJSON(),
+          },
+        });
+
+        const outboxRejected = OutboxMessage.enqueue(rejectedEvent);
+        tsxEntityManager.persist(
+          tsxEntityManager.create(OutboxMessageEntity, {
+            id: outboxRejected.id,
+            aggregateId: outboxRejected.aggregateId,
+            eventType: outboxRejected.eventType,
+            payload: outboxRejected.payload,
+            occurredAt: outboxRejected.occurredAt,
+            attempts: outboxRejected.attempts,
+            nextAttemptAt: outboxRejected.nextAttemptAt,
+            publishedAt: outboxRejected.publishedAt,
+          }),
+        );
+      }
 
       return {
         transactionId: transaction.id,

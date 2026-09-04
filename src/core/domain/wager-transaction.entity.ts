@@ -1,3 +1,4 @@
+import { FailureCode } from './failure-codes.enum';
 import { Money } from './money.value-object';
 
 export enum WagerTransactionKind {
@@ -54,7 +55,7 @@ export class WagerTransaction {
     public readonly createdAt: Date,
     private _status: WagerTransactionStatus,
     private _referenceTransactionId?: string,
-    private _failureCode?: string,
+    private _failureCode?: FailureCode,
     private _processedAt?: Date,
   ) {}
 
@@ -112,7 +113,7 @@ export class WagerTransaction {
   get referenceTransactionId(): string | undefined {
     return this._referenceTransactionId;
   }
-  get failureCode(): string | undefined {
+  get failureCode(): FailureCode | undefined {
     return this._failureCode;
   }
   get processedAt(): Date | undefined {
@@ -131,13 +132,13 @@ export class WagerTransaction {
     this._status = WagerTransactionStatus.PendingReference;
   }
 
-  reject(code: string): void {
+  reject(code: FailureCode): void {
     this.assertNotTerminal();
     this._status = WagerTransactionStatus.Rejected;
     this._failureCode = code;
   }
 
-  fail(code: string): void {
+  fail(code: FailureCode): void {
     this.assertNotTerminal();
     this._status = WagerTransactionStatus.Failed;
     this._failureCode = code;
