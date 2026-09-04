@@ -28,6 +28,7 @@ import { WagerTransactionRejected } from '../../../shared/events/wager-transacti
 import { InboxMessage } from '../../../core/domain/inbox-message.entity';
 import { InboxMessageEntity } from '../../../shared/database/entities/inbox-message.entity';
 import { FailureCode } from '../../../core/domain/failure-codes.enum';
+import { WagerTransactionPendingReference } from '../../../shared/events/wager-transaction-pending.event';
 
 @Injectable()
 export class ProcessWageringService {
@@ -92,6 +93,32 @@ export class ProcessWageringService {
             },
           );
           tsxEntityManager.persist(pendingTxEntity);
+
+          const pendingEvent = WagerTransactionPendingReference.create({
+            eventId: randomUUID(),
+            aggregateId: transaction.id,
+            correlationId: transaction.id,
+            data: {
+              transactionId: transaction.id,
+              providerId: transaction.providerId,
+              referenceExternalTransactionId:
+                dto.referenceExternalTransactionId!,
+            },
+          });
+
+          const outboxPending = OutboxMessage.enqueue(pendingEvent);
+          tsxEntityManager.persist(
+            tsxEntityManager.create(OutboxMessageEntity, {
+              id: outboxPending.id,
+              aggregateId: outboxPending.aggregateId,
+              eventType: outboxPending.eventType,
+              payload: outboxPending.payload,
+              occurredAt: outboxPending.occurredAt,
+              attempts: outboxPending.attempts,
+              nextAttemptAt: outboxPending.nextAttemptAt,
+              publishedAt: outboxPending.publishedAt,
+            }),
+          );
 
           return {
             transactionId: transaction.id,
