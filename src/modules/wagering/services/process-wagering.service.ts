@@ -14,7 +14,12 @@ import {
   WagerTransactionStatus,
 } from '../../../core/domain/wager-transaction.entity';
 import { randomUUID } from 'node:crypto';
-import { EntityManager, LockMode, OptimisticLockError } from '@mikro-orm/core';
+import {
+  EntityManager,
+  LockMode,
+  OptimisticLockError,
+  UniqueConstraintViolationException,
+} from '@mikro-orm/core';
 import { WalletEntity } from '../../../shared/database/entities/wallet.entity';
 import { Wallet } from '../../../core/domain/wallet.aggregate';
 import { WalletLedgerEntry } from '../../../core/domain/wallet-ledger-entry.entity';
@@ -35,6 +40,7 @@ import { ClsService } from 'nestjs-cls';
 @Injectable()
 export class ProcessWageringService {
   private logger = new Logger(ProcessWageringService.name);
+  private static readonly MAX_CONCURRENCY_RETRIES = 5;
 
   constructor(
     private readonly entityManager: EntityManager,
@@ -49,25 +55,43 @@ export class ProcessWageringService {
     this.logger.log('Iniciando processamento da aposta');
     this.cls.set('providerId', dto.providerId);
     this.cls.set('walletId', dto.walletId);
+
     const endTimer = this.metrics.startLatencyTimer();
 
     try {
-      this.logger.log(`Verificando idempotência da transação`);
-      const idempotencyCheck = await this.checkIdempotency(dto);
-      if (idempotencyCheck) {
-        this.metrics.recordDuplicate();
-        return idempotencyCheck;
-      }
+      return await this.executeWithConcurrencyRetry(dto, inbox);
+    } finally {
+      endTimer();
+    }
+  }
 
+  private async executeWithConcurrencyRetry(
+    dto: ProcessWagerDto,
+    inbox: InboxMessage | undefined,
+    attempt = 1,
+  ): Promise<ProcessWagerResult> {
+    this.logger.log(`Verificando idempotência da transação`);
+
+    const idempotencyCheck = await this.checkIdempotency(dto);
+    if (idempotencyCheck) {
+      this.metrics.recordDuplicate();
+      return idempotencyCheck;
+    }
+
+    try {
       return await this.entityManager.transactional(
         async (tsxEntityManager) => {
           if (inbox) {
             this.cls.set('messageId', inbox.messageId);
-            inbox.markProcessed(new Date());
+
+            if (!inbox.isProcessed()) {
+              inbox.markProcessed(new Date());
+            }
 
             this.logger.log(
               `Processando mensagem de entrada com ID: ${inbox.messageId}`,
             );
+
             const inboxEntity = tsxEntityManager.create(InboxMessageEntity, {
               id: inbox.id,
               messageId: inbox.messageId,
@@ -80,12 +104,12 @@ export class ProcessWageringService {
           }
 
           const transactionMoney = Money.from(dto.money);
+
           const transaction = WagerTransaction.create({
             ...dto,
             id: randomUUID(),
             money: transactionMoney,
           });
-
           this.cls.set('transactionId', transaction.id);
 
           let wagerTransactionEntity: WagerTransactionEntity | null = null;
@@ -156,6 +180,7 @@ export class ProcessWageringService {
           }
 
           this.logger.log(`Fetching wallet`);
+
           const walletEntity = await tsxEntityManager.findOne(
             WalletEntity,
             { id: dto.walletId },
@@ -195,7 +220,10 @@ export class ProcessWageringService {
             if (error instanceof Error) {
               if (error.message.includes('Insufficient funds')) {
                 businessFailureCode = FailureCode.INSUFFICIENT_FUNDS;
-              } else if (error.message.includes('Currency mismatch')) {
+              } else if (
+                error.message.includes('Currency mismatch') ||
+                error.message.includes('currency must match')
+              ) {
                 businessFailureCode = FailureCode.CURRENCY_MISMATCH;
               } else {
                 businessFailureCode = FailureCode.BUSINESS_RULE_VIOLATION;
@@ -211,6 +239,7 @@ export class ProcessWageringService {
           }
 
           this.logger.log(`Persisting transaction and ledger entries`);
+
           const transactionEntity = tsxEntityManager.create(
             WagerTransactionEntity,
             {
@@ -223,6 +252,7 @@ export class ProcessWageringService {
               failureCode: transaction.failureCode,
             },
           );
+
           tsxEntityManager.persist(transactionEntity);
 
           if (transaction.status === WagerTransactionStatus.Processed) {
@@ -348,18 +378,28 @@ export class ProcessWageringService {
         },
       );
     } catch (error) {
+      if (
+        error instanceof OptimisticLockError &&
+        attempt < ProcessWageringService.MAX_CONCURRENCY_RETRIES
+      ) {
+        this.metrics.recordLockConflict();
+        this.logger.warn(
+          `Conflito de concorrência na wallet ${dto.walletId}, tentativa ${attempt + 1}`,
+        );
+        return this.executeWithConcurrencyRetry(dto, inbox, attempt + 1);
+      }
+
       if (error instanceof OptimisticLockError) {
         this.metrics.recordLockConflict();
       }
-      if (
-        error instanceof Error &&
-        error.message.includes('unique constraint')
-      ) {
+
+      if (error instanceof UniqueConstraintViolationException) {
         this.metrics.recordDuplicate();
+        const replay = await this.checkIdempotency(dto);
+        if (replay) return replay;
       }
+
       throw error;
-    } finally {
-      endTimer();
     }
   }
 
@@ -369,6 +409,7 @@ export class ProcessWageringService {
     if (!dto.idempotencyKey) {
       throw new BadRequestException('Header idempotency-key is required');
     }
+
     const existingTxEntity = await this.entityManager.findOne(
       WagerTransactionEntity,
       {
@@ -389,6 +430,7 @@ export class ProcessWageringService {
         idempotentReplay: true,
       };
     }
+
     return undefined;
   }
 

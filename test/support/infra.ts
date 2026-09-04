@@ -7,6 +7,9 @@ import {
   type StartedLocalStackContainer,
 } from '@testcontainers/localstack';
 import { CreateQueueCommand, SQSClient } from '@aws-sdk/client-sqs';
+import { Test } from '@nestjs/testing';
+import type { INestApplication } from '@nestjs/common';
+import { MikroORM } from '@mikro-orm/core';
 import { applyTestEnv } from './test-utils';
 
 export interface Infra {
@@ -59,4 +62,37 @@ export async function startInfra(): Promise<Infra> {
 export async function stopInfra(infra: Partial<Infra>): Promise<void> {
   await infra.localstack?.stop();
   await infra.postgres?.stop();
+}
+
+export interface TestApp {
+  app: INestApplication;
+  infra: Infra;
+}
+
+export async function bootTestApp(): Promise<TestApp> {
+  const infra = await startInfra();
+
+  const { AppModule } = await import('../../src/app.module.js');
+  const moduleFixture = await Test.createTestingModule({
+    imports: [AppModule],
+  }).compile();
+  const app = moduleFixture.createNestApplication();
+  await app.init();
+
+  const orm = app.get(MikroORM);
+  await orm.schema.refresh();
+
+  return { app, infra };
+}
+
+export async function stopTestApp(testApp?: Partial<TestApp>): Promise<void> {
+  if (!testApp) return;
+
+  if (testApp.app) {
+    try {
+      await testApp.app.close();
+    } catch (e) {
+      console.error('Erro ao fechar a aplicação NestJS:', e);
+    }
+  }
 }
