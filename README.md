@@ -1,4 +1,3 @@
-````markdown
 # Jungle Gaming — Distributed Wagering Processor
 
 Este repositório contém a solução do desafio técnico para o processador de transações financeiras distribuídas da Jungle Gaming. O sistema foi projetado para processar alto volume de apostas mantendo consistência absoluta, atomicidade de operações e resiliência contra falhas em um ecossistema distribuído.
@@ -23,10 +22,10 @@ Este repositório contém a solução do desafio técnico para o processador de 
 ## 🚀 Setup do Projeto
 
 1. Instale as dependências:
+
    ```bash
    bun install
    ```
-````
 
 2. Configure o ambiente:
 
@@ -102,7 +101,3 @@ A alta taxa de rejeição por infraestrutura e a latência na casa dos 600ms nã
 Neste cenário de bombardeio intenso e contínuo sobre a **mesma carteira**, a contenção gerou conflitos severos de versão no Postgres. O sistema realizou as retentativas programadas no _Unit of Work_ (`MAX_CONCURRENCY_RETRIES = 5`), mas, devido ao esgotamento dessas tentativas por conta da altíssima concorrência paralela, o framework devolveu o erro 500 para evitar atualizações perdidas (_lost updates_). A latência elevada reflete o custo computacional desses múltiplos _rollbacks_ e retries sucessivos.
 
 **Conclusão:** O sistema preferiu falhar de forma segura a corromper dados. As invariantes financeiras de não-negatividade e soma dupla do ledger foram mantidas 100% intactas. Em um cenário real de cassino, onde o tráfego é diluído em milhares de usuários distintos, o lock otimista opera de forma brilhante e rápida.
-
-```
-
-```
