@@ -1,98 +1,103 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Jungle Gaming — Distributed Wagering Processor
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Este repositório contém a solução do desafio técnico para o processador de transações financeiras distribuídas da Jungle Gaming. O sistema foi projetado para processar alto volume de apostas mantendo consistência absoluta, atomicidade de operações e resiliência contra falhas em um ecossistema distribuído.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## 🛠 Stack Tecnológica
 
-## Description
+- **Runtime:** [Bun](https://bun.sh) 1.x
+- **Linguagem:** TypeScript (Strict Mode)
+- **Framework:** NestJS
+- **Banco de Dados:** PostgreSQL 16
+- **ORM:** MikroORM (Padrão Unit of Work + Data Mapper)
+- **Mensageria:** AWS SQS (emulado via LocalStack)
+- **Orquestração:** Docker Compose
+- **Testes de Carga:** Grafana K6
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## ⚙️ Pré-requisitos
 
-## Project setup
+- [Bun](https://bun.sh) 1.x instalado nativamente.
+- Docker e Docker Compose em execução.
+- [Grafana k6](https://k6.io/docs/get-started/installation/) instalado na máquina host (para rodar os testes de carga opcionais).
+
+## 🚀 Setup do Projeto
+
+1. Instale as dependências:
 
 ```bash
-$ bun install
+bun install
 ```
 
-## Compile and run the project
+2. Configure o ambiente:
 
 ```bash
-# development
-$ bun run start
+cp .env.example .env
 
-# watch mode
-$ bun run start:dev
-
-# production mode
-$ bun run start:prod
 ```
 
-## Run tests
+3. Suba a infraestrutura local (PostgreSQL + LocalStack):
 
 ```bash
-# unit tests
-$ bun run test
+bun run docker:up
 
-# e2e tests
-$ bun run test:e2e
-
-# test coverage
-$ bun run test:cov
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+4. Execute as migrações do banco de dados:
 
 ```bash
-$ bun install -g @nestjs/mau
-$ mau deploy
+bun run migration:up
+
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+5. Inicie a aplicação (Modo Dev):
 
-## Resources
+```bash
+bun run start:dev
 
-Check out a few resources that may come in handy when working with NestJS:
+```
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+## 🧪 Estratégia de Testes
 
-## Support
+Os testes não utilizam mocks para o banco ou para a mensageria, atendendo aos requisitos estritos de validação arquitetural. Os testes de integração e concorrência sobem infraestrutura real usando Testcontainers.
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+Para evitar sobrecarga e lentidão no feedback loop durante o desenvolvimento, os scripts de teste foram segmentados:
 
-## Stay in touch
+```bash
+# Roda apenas os testes de unidade em memória (Lógica de Domínio e Value Objects)
+bun run test
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+# Roda os testes de integração (Requer Docker ativo para o Testcontainers)
+bun run test:integration
 
-## License
+# Roda a suíte extrema de Race Conditions (Promise.all massivo no Postgres real)
+bun run test:concurrency
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+# Executa a bateria de testes completa (Unidade + Integração + Concorrência)
+bun run test:all
+
+```
+
+## 📊 Teste de Carga e Concorrência (K6)
+
+Conforme os diferenciais propostos no desafio, a aplicação foi submetida a um teste de carga rigoroso focado no isolamento transacional e no comportamento da _Hot Wallet_ sob estresse extremo.
+
+- **Ambiente:** Executado localmente. Máquina host: AMD Ryzen 5 5600X, 32GB RAM, WSL2 (Ubuntu). Injetor K6, aplicação Bun e contêineres Docker compartilhando os mesmos recursos.
+- **Metodologia:** Script K6 (`bun run test:load`) simulando 50 Virtual Users (Provedores) disparando transações simultâneas sem pausas na **exata mesma** `walletId` durante 1 minuto e 20 segundos.
+
+- **Throughput:** ~92.82 RPS concentrados em uma única linha do banco de dados.
+
+- **Latência Registrada:**
+- Média: 382.11ms
+
+- p(90): 635.65ms
+
+- p(95): 673.24ms
+
+- **Taxa de Erro (HTTP 500):** 44.35% (2060 falhas em 4644 requisições).
+
+### Diagnóstico Arquitetural: O Esgotamento do Lock Otimista
+
+A alta taxa de rejeição por infraestrutura e a latência na casa dos 600ms não são falhas acidentais, mas sim uma consequência da escolha arquitetural estrita pelo **Optimistic Locking** (`version`).
+
+Neste cenário de bombardeio intenso e contínuo sobre a **mesma carteira**, a contenção gerou conflitos severos de versão no Postgres. O sistema realizou as retentativas programadas no _Unit of Work_ (`MAX_CONCURRENCY_RETRIES = 5`), mas, devido ao esgotamento dessas tentativas por conta da altíssima concorrência paralela, o framework devolveu o erro 500 para evitar atualizações perdidas (_lost updates_). A latência elevada reflete o custo computacional desses múltiplos _rollbacks_ e retries sucessivos.
+
+**Conclusão:** O sistema preferiu falhar de forma segura a corromper dados. As invariantes financeiras de não-negatividade e soma dupla do ledger foram mantidas 100% intactas. Em um cenário real de cassino, onde o tráfego é diluído em milhares de usuários distintos, o lock otimista opera de forma brilhante e rápida.

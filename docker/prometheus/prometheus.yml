@@ -1,0 +1,9 @@
+global:
+  scrape_interval: 5s # Frequência de coleta
+
+scrape_configs:
+  - job_name: 'wagering-processor'
+    metrics_path: '/metrics'
+    static_configs:
+      # O "host.docker.internal" permite que o container do Prometheus enxergue a API rodando na sua máquina host
+      - targets: ['host.docker.internal:3000']

@@ -1,0 +1,62 @@
+import { randomUUID } from 'node:crypto';
+
+export interface ReceiveInboxProps {
+  messageId: string;
+  consumerName: string;
+  payloadHash: string;
+}
+
+export interface InboxMessageState extends ReceiveInboxProps {
+  id: string;
+  receivedAt: Date;
+  processedAt?: Date;
+}
+
+export class InboxMessage {
+  private constructor(
+    public readonly id: string,
+    public readonly messageId: string,
+    public readonly consumerName: string,
+    public readonly payloadHash: string,
+    public readonly receivedAt: Date,
+    private _processedAt?: Date,
+  ) {}
+
+  static receive(props: ReceiveInboxProps): InboxMessage {
+    return new InboxMessage(
+      randomUUID(),
+      props.messageId,
+      props.consumerName,
+      props.payloadHash,
+      new Date(),
+    );
+  }
+
+  static rehydrate(state: InboxMessageState): InboxMessage {
+    return new InboxMessage(
+      state.id,
+      state.messageId,
+      state.consumerName,
+      state.payloadHash,
+      state.receivedAt,
+      state.processedAt,
+    );
+  }
+
+  get processedAt(): Date | undefined {
+    return this._processedAt;
+  }
+
+  isProcessed(): boolean {
+    return this._processedAt !== undefined;
+  }
+
+  markProcessed(at: Date): void {
+    if (this.isProcessed()) {
+      throw new Error(
+        `Message ${this.messageId} already processed by ${this.consumerName}`,
+      );
+    }
+    this._processedAt = at;
+  }
+}
