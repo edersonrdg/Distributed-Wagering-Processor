@@ -18,12 +18,12 @@ describe('AppController (e2e, real Postgres + LocalStack)', () => {
     }).compile();
     app = moduleFixture.createNestApplication();
     await app.init();
-  }, 120_000);
+  }, 60000);
 
   afterAll(async () => {
     await app?.close();
     await stopInfra(infra);
-  });
+  }, 60000);
 
   test('/ (GET)', async () => {
     const res = await request(app.getHttpServer()).get('/');

@@ -16,3 +16,27 @@ export async function waitUntil(
   }
   throw new Error(`Condition not met within ${timeoutMs}ms`);
 }
+
+export interface ReconciliationResult {
+  walletId: string;
+  storedBalance: { amount: string; currency: string };
+  calculatedBalance: { amount: string; currency: string };
+  difference: { amount: string; currency: string };
+  consistent: boolean;
+  checkedEntries: number;
+}
+
+export async function assertLedgerReconciles(
+  reconciliationService: {
+    execute(walletId: string): Promise<ReconciliationResult>;
+  },
+  walletId: string,
+): Promise<ReconciliationResult> {
+  const result = await reconciliationService.execute(walletId);
+  if (!result.consistent) {
+    throw new Error(
+      `Ledger reconciliation failed for wallet ${walletId}: stored=${result.storedBalance.amount} calculated=${result.calculatedBalance.amount}`,
+    );
+  }
+  return result;
+}
