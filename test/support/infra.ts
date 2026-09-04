@@ -77,6 +77,7 @@ export async function bootTestApp(): Promise<TestApp> {
     imports: [AppModule],
   }).compile();
   const app = moduleFixture.createNestApplication();
+  app.useLogger(false);
   await app.init();
 
   const orm = app.get(MikroORM);
